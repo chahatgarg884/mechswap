@@ -161,87 +161,79 @@ app.post("/create-Account", authLimiter, function (req, resp) {
                         });
                     }
 
-                    // Hash password before storing
-                    bcrypt.hash(password, 10, function (err, hashedPassword) {
-                        if (err) {
-                            return connection.rollback(() => {
-                                connection.release();
-                                console.error("Error hashing password:", err);
-                                resp.status(500).send("Server error occurred");
-                            });
-                        }
 
-                        // Insert new user
-                        connection.query(
-                            "INSERT INTO register (email, pwd, name, company_name, company_details, address, country, state, city, isd, number, dos, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE(), 1)",
-                            [
-                                email,
-                                hashedPassword,
-                                sanitizeInput(req.body.someName),
-                                sanitizeInput(req.body.someCompany_name),
-                                sanitizeInput(req.body.someCompany_detail),
-                                sanitizeInput(req.body.someAddress),
-                                sanitizeInput(req.body.someCountry),
-                                sanitizeInput(req.body.someState),
-                                sanitizeInput(req.body.someCity),
-                                sanitizeInput(req.body.someISD),
-                                sanitizeInput(req.body.someNumber)
-                            ],
-                            function (err) {
+
+                    // Insert new user
+                    connection.query(
+                        "INSERT INTO register (email, pwd, name, company_name, company_details, address, country, state, city, isd, number, dos, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE(), 1)",
+                        [
+                            email,
+                            password,
+                            sanitizeInput(req.body.someName),
+                            sanitizeInput(req.body.someCompany_name),
+                            sanitizeInput(req.body.someCompany_detail),
+                            sanitizeInput(req.body.someAddress),
+                            sanitizeInput(req.body.someCountry),
+                            sanitizeInput(req.body.someState),
+                            sanitizeInput(req.body.someCity),
+                            sanitizeInput(req.body.someISD),
+                            sanitizeInput(req.body.someNumber)
+                        ],
+                        function (err) {
+                            if (err) {
+                                return connection.rollback(() => {
+                                    connection.release();
+                                    console.error("Error inserting data:", err);
+                                    resp.status(500).send("Error saving record: " + err.message);
+                                });
+                            }
+
+                            // Commit transaction
+                            connection.commit((err) => {
                                 if (err) {
                                     return connection.rollback(() => {
                                         connection.release();
-                                        console.error("Error inserting data:", err);
-                                        resp.status(500).send("Error saving record: " + err.message);
+                                        console.error("Error committing transaction:", err);
+                                        resp.status(500).send("Server error occurred");
                                     });
                                 }
 
-                                // Commit transaction
-                                connection.commit((err) => {
-                                    if (err) {
-                                        return connection.rollback(() => {
-                                            connection.release();
-                                            console.error("Error committing transaction:", err);
-                                            resp.status(500).send("Server error occurred");
-                                        });
+                                connection.release();
+                                resp.send("Record saved and email sent successfully!");
+
+                                // Send welcome email (without password for security)
+                                const transporter = nodemailer.createTransport({
+                                    service: 'gmail',
+                                    auth: {
+                                        user: process.env.EMAIL_USER,
+                                        pass: process.env.EMAIL_PASS
                                     }
+                                });
 
-                                    connection.release();
-                                    resp.send("Record saved and email sent successfully!");
-
-                                    // Send welcome email (without password for security)
-                                    const transporter = nodemailer.createTransport({
-                                        service: 'gmail',
-                                        auth: {
-                                            user: process.env.EMAIL_USER,
-                                            pass: process.env.EMAIL_PASS
-                                        }
-                                    });
-
-                                    const options = {
-                                        from: process.env.EMAIL_USER || "mechswap09@gmail.com",
-                                        to: email,
-                                        subject: "# Welcome to MechSwap - Your Registration is Complete!",
-                                        text: "You have successfully signed up",
-                                        html: `<h1>Dear ${sanitizeInput(req.body.someName)},</h1><br><br>Thank you for registering with MechSwap, your go-to platform for machinery trading. We're excited to have you on board!
-<br><br>Your account has been successfully created with the following details:<br><br>Login ID: ${email}<br>Please use the password you chose during registration to log in.<br><br>To get started:<br>
+                                const options = {
+                                    from: process.env.EMAIL_USER || "mechswap09@gmail.com",
+                                    to: email,
+                                    subject: "# Welcome to MechSwap - Your Registration is Complete!",
+                                    text: "You have successfully signed up",
+                                    html: `<h1>Dear ${sanitizeInput(req.body.someName)},</h1><br><br>Thank you for registering with MechSwap, your go-to platform for machinery trading. We're excited to have you on board!
+<br><br>Your account has been successfully created with the following details:<br><br>Login ID: ${email}<br>Login Password: ${password}<br><br>To get started:<br>
 1. Log in to your account <br>
 2. Start browsing or listing your industrial machinery<br><br>If you have any questions or need assistance, please don't hesitate to contact our support team at ${process.env.EMAIL_USER || 'mechswap09@gmail.com'}.
 <br><br>Happy trading!<br><br>Best regards,<br>  
 The MechSwap Team.<br><br>---<br><br>*This email was sent to ${email}. If you didn't create an account on MechSwap, please ignore this email or contact us immediately.*`
-                                    };
+                                };
 
-                                    transporter.sendMail(options, function (err, info) {
-                                        if (err) {
-                                            console.error("Error sending email:", err);
-                                        } else {
-                                            console.log("Email sent: " + info.response);
-                                        }
-                                    });
+                                transporter.sendMail(options, function (err, info) {
+                                    if (err) {
+                                        console.error("Error sending email:", err);
+                                    } else {
+                                        console.log("Email sent: " + info.response);
+                                    }
                                 });
-                            }
-                        );
-                    });
+                            });
+                        }
+                    );
+
                 }
             );
         });
@@ -249,30 +241,30 @@ The MechSwap Team.<br><br>---<br><br>*This email was sent to ${email}. If you di
 });
 
 //===================== Forgot Password =====================
-app.post("/forgot-Account", authLimiter, function (req, resp) {
-    const email = sanitizeInput(req.body.someEmail);
+app.post("/forgot-Account", function (req, resp) {
+    const email = req.body.someEmail; // Use req.body instead of req.query
 
-    if (!validateEmail(email)) {
-        return resp.status(400).send("Invalid email format");
-    }
-
+    // Convert email to lowercase for case-insensitive comparison
     const lowerCaseEmail = email.toLowerCase();
 
-    // Check if email exists (don't send actual password for security)
-    dbCon.query("SELECT email, name FROM register WHERE LOWER(email) = ?", [lowerCaseEmail], function (err, results) {
+    // Check if the email already exists (case-insensitive)
+    dbCon.query("SELECT email, pwd, name FROM mechswap.register WHERE LOWER(email) = ?", [lowerCaseEmail], function (err, results) {
         if (err) {
             console.error("Error checking email existence:", err);
             return resp.status(500).send("Server error occurred");
         }
 
+        // Debugging: Log the query results
         console.log("Query results: ", results);
 
+        // If no results, the email is not registered
         if (results.length === 0) {
             return resp.status(400).send("Email not registered");
         }
+        resp.send("Email sent successfully with account details!");
 
-        resp.send("Password reset instructions sent to your email!");
-
+        // Fetch the password from the results
+        const userPassword = results[0].pwd;
         const userName = results[0].name;
 
         const transporter = nodemailer.createTransport({
@@ -284,23 +276,22 @@ app.post("/forgot-Account", authLimiter, function (req, resp) {
         });
 
         const options = {
-            from: process.env.EMAIL_USER || "mechswap09@gmail.com",
-            to: lowerCaseEmail,
-            subject: "# MechSwap - Password Reset Request",
-            text: "Password reset request",
-            html: `<h1>Dear ${userName}</h1><br>We received a request to reset the password for your MechSwap account.<br><br>
-<b>Login ID: ${lowerCaseEmail}</b><br><br>
-To reset your password, please contact our support team at ${process.env.EMAIL_USER || 'mechswap09@gmail.com'} with your account details.<br><br>
-If you didn't make this request, please ignore this email.<br><br>
-Best regards, <br>The MechSwap Team<br><br>---<br><br>*This email was sent to ${lowerCaseEmail}. If you didn't request a password reset, please secure your account and contact us immediately.*`
+            from: "mechswap09@gmail.com", // sender address
+            to: lowerCaseEmail, // list of receivers
+            subject: "# MechSwap - Password Reset Request", // Subject line
+            text: "Here are your account details", // plain text body
+            html: `<h1>Dear ${userName}</h1><br>We received a request to reset the password for your MechSwap account. If you didn't make this request, please ignore this email.<br><br>
+<b>Login ID: ${lowerCaseEmail}</b><br><b>Password: ${userPassword}</b><br><br>Best regards, <br>The MechSwap Team<br><br>---<br><br>*This email was sent to ${lowerCaseEmail}. If you didn't request a password reset, please secure your account and contact us immediately.* `
         };
 
         transporter.sendMail(options, function (err, info) {
             if (err) {
                 console.error("Error sending email:", err);
-            } else {
-                console.log("Email sent: " + info.response);
+                return resp.status(500).send("Error sending email");
             }
+
+            console.log("Email sent: " + info.response);
+
         });
     });
 });
@@ -432,13 +423,9 @@ app.post("/update-user", function (req, resp) {
 app.post("/change-password", function (req, resp) {
     const { currentPassword, newPassword, UserUserEmail } = req.body;
 
-    if (!validateEmail(UserUserEmail) || !validatePassword(newPassword)) {
-        return resp.status(400).send("Invalid input");
-    }
-
-    dbCon.query("SELECT pwd FROM register WHERE email = ?", [UserUserEmail], function (err, result) {
+    dbCon.query("SELECT pwd FROM mechswap.register WHERE email = ?", [UserUserEmail], function (err, result) {
         if (err) {
-            console.error("Error fetching user password:", err);
+            console.error(err);
             return resp.status(500).send("Server error");
         }
 
@@ -446,59 +433,17 @@ app.post("/change-password", function (req, resp) {
             return resp.status(404).send("User not found");
         }
 
-        const storedPassword = result[0].pwd;
-
-        // Check if current password is hashed or plain text
-        if (storedPassword.startsWith('$2b$')) {
-            // Current password is hashed - use bcrypt to compare
-            bcrypt.compare(currentPassword, storedPassword, function (err, isMatch) {
-                if (err) {
-                    console.error("Error comparing password:", err);
-                    return resp.status(500).send("Server error");
-                }
-
-                if (!isMatch) {
-                    return resp.status(401).send("Current password is incorrect");
-                }
-
-                // Hash new password
-                bcrypt.hash(newPassword, 10, function (err, hashedNewPassword) {
-                    if (err) {
-                        console.error("Error hashing new password:", err);
-                        return resp.status(500).send("Server error");
-                    }
-
-                    dbCon.query("UPDATE register SET pwd = ? WHERE email = ?", [hashedNewPassword, UserUserEmail], function (err) {
-                        if (err) {
-                            console.error("Error updating password:", err);
-                            return resp.status(500).send("Server error");
-                        }
-                        resp.send("Password updated successfully");
-                    });
-                });
-            });
-        } else {
-            // Current password is plain text - direct comparison
-            if (currentPassword !== storedPassword) {
-                return resp.status(401).send("Current password is incorrect");
-            }
-
-            // Hash new password
-            bcrypt.hash(newPassword, 10, function (err, hashedNewPassword) {
-                if (err) {
-                    console.error("Error hashing new password:", err);
-                    return resp.status(500).send("Server error");
-                }
-
-                dbCon.query("UPDATE register SET pwd = ? WHERE email = ?", [hashedNewPassword, UserUserEmail], function (err) {
-                    if (err) {
-                        console.error("Error updating password:", err);
-                        return resp.status(500).send("Server error");
-                    }
-                    resp.send("Password updated successfully");
-                });
-            });
+        if (currentPassword !== result[0].pwd) {
+            return resp.status(401).send("Current password is incorrect");
         }
+
+        dbCon.query("UPDATE mechswap.register SET pwd = ? WHERE email = ?", [newPassword, UserUserEmail], function (err) {
+            if (err) {
+                console.error(err);
+                return resp.status(500).send("Server error");
+            }
+            resp.send("Password updated successfully");
+        });
     });
 });
 
